@@ -1,106 +1,96 @@
 import os
 import glob
 import cv2  # OpenCV library for video processing
-from PIL import Image  # Pillow library for palette-based images
+from PIL import Image  # Pillow library for image processing
 from pyktok import specify_browser, save_tiktok
+from tqdm import tqdm  # For displaying progress bars
 
-# Step 1: Define the folder containing main.py
-script_folder = os.path.dirname(os.path.abspath(__file__))  # Get the folder of main.py
-frame_folder = os.path.join(script_folder, "frames")        # Folder to store extracted frames
-raw_data_folder = os.path.join(script_folder, "raw_data")   # Folder to store raw binary data
+# [32mPrompt the user for the TikTok video URL[0m
+video_url = input("[32mPlease enter the TikTok video URL:[0m ").strip()
 
-# Step 2: Define the TikTok video URL
-video_url = "https://www.tiktok.com/@chllxedits/video/7452726325628128520?is_from_webapp=1&sender_device=pc&web_id=7453276693018314256"  # Define TikTok URL
+if not video_url:
+    print("[32mNo URL provided. Exiting the program.[0m")
+    exit()
 
-# Step 3: Clean up all previous files before starting
-print("Cleaning up previous files...")
+# Define directories
+script_folder = os.path.dirname(os.path.abspath(__file__))
+frame_folder = os.path.join(script_folder, "frames")
+raw_data_folder = os.path.join(script_folder, "raw_data")
 
-# Delete all PBM and raw files in the frames and raw_data folders
-for folder, extension in [(frame_folder, "*.pbm"), (raw_data_folder, "*.bin")]:
+# [32mClean up old files in specified folders[0m
+def clean_folder(folder, extension):
     if os.path.exists(folder):
         files = glob.glob(os.path.join(folder, extension))
-        for file in files:
-            try:
-                os.remove(file)
-                print(f"Deleted file: {file}")
-            except Exception as e:
-                print(f"Error deleting file {file}: {e}")
-
-        # Delete the folder if empty
+        for file in tqdm(files, desc=f"[1mCleaning {folder}[0m", unit="file"):
+            os.remove(file)
         if not os.listdir(folder):
             os.rmdir(folder)
-            print(f"Deleted empty folder: {folder}")
 
-print("Cleanup complete.")
+print("[32mCleaning up old files...[0m")
+clean_folder(frame_folder, "*.pbm")
+clean_folder(raw_data_folder, "*.bin")
 
-# Step 4: Ensure the frame and raw_data folders exist
+# Ensure directories exist
 os.makedirs(frame_folder, exist_ok=True)
 os.makedirs(raw_data_folder, exist_ok=True)
 
-# Step 5: Download the TikTok video
+# [32mDownload TikTok video[0m
 try:
-    # Download the video
-    specify_browser("chrome")  # Specify the browser for cookie extraction
-    save_tiktok(video_url, save_video=True, metadata_fn='', browser_name=None)
-    print("Downloaded TikTok video successfully!")
+    print("[32mDownloading TikTok video...[0m")
+    specify_browser("chrome")
+    save_tiktok(video_url, save_video=True)
+    print("[32mTikTok video downloaded successfully.[0m")
 except Exception as e:
-    print(f"An error occurred during TikTok video download: {e}")
+    print(f"[32mError downloading TikTok video:[0m {e}")
+    exit()
 
-# Step 6: Process any .mp4 files in the directory
+# Process MP4 videos in the script folder
 mp4_files = glob.glob(os.path.join(script_folder, "*.mp4"))
 if not mp4_files:
-    print("No .mp4 files found in the folder.")
-else:
-    for video_filepath in mp4_files:
-        print(f"Processing video: {video_filepath}")
+    print("[32mNo MP4 videos found to process.[0m")
+    exit()
 
-        try:
-            # Open the video file
-            video = cv2.VideoCapture(video_filepath)
+for video_path in mp4_files:
+    print(f"[32mProcessing video:[0m [1m{os.path.basename(video_path)}[0m")
 
-            # Get video properties
-            fps = video.get(cv2.CAP_PROP_FPS)
-            total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-            duration = total_frames / fps
-            start_time = max(0, duration - 9)  # Start 9 seconds from the end
-            start_frame = int(start_time * fps)
+    try:
+        video = cv2.VideoCapture(video_path)
+        fps = video.get(cv2.CAP_PROP_FPS)
+        total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        duration = total_frames / fps
 
-            # OLED resolution
-            oled_width = 128
-            oled_height = 64
+        # Start processing 9 seconds from the end if possible
+        start_frame = max(0, int((duration - 9) * fps))
+        video.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
-            frame_count = 0
-            video.set(cv2.CAP_PROP_POS_FRAMES, start_frame)  # Set to start frame
+        frame_count = 0
+        oled_resolution = (128, 64)
 
+        with tqdm(total=total_frames - start_frame, desc="[32mExtracting frames[0m", unit="frame") as pbar:
             while True:
                 ret, frame = video.read()
                 if not ret:
                     break
 
-                # Resize the frame to fit OLED resolution
-                resized_frame = cv2.resize(frame, (oled_width, oled_height))
-
-                # Convert to grayscale
+                # Prepare the frame for OLED display
+                resized_frame = cv2.resize(frame, oled_resolution)
                 grayscale_frame = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2GRAY)
+                bw_image = Image.fromarray(grayscale_frame).convert("1")
 
-                # Convert to indexed color (1-bit palette)
-                pil_image = Image.fromarray(grayscale_frame)
-                bw_image = pil_image.convert("1")  # Convert to black and white (1-bit)
+                # Save the PBM image and raw binary data
+                frame_base = f"{os.path.splitext(os.path.basename(video_path))[0]}_frame_{frame_count:04d}"
+                pbm_path = os.path.join(frame_folder, f"{frame_base}.pbm")
+                raw_path = os.path.join(raw_data_folder, f"{frame_base}.bin")
 
-                # Save the frame as a PBM image
-                pbm_path = os.path.join(frame_folder, f"{os.path.splitext(os.path.basename(video_filepath))[0]}_frame_{frame_count:04d}.pbm")
                 bw_image.save(pbm_path, "PPM")
-                print(f"Saved frame as PBM: {pbm_path}")
-
-                # Save the raw binary data
-                raw_path = os.path.join(raw_data_folder, f"{os.path.splitext(os.path.basename(video_filepath))[0]}_frame_{frame_count:04d}.bin")
-                with open(raw_path, 'wb') as raw_file:
+                with open(raw_path, "wb") as raw_file:
                     raw_file.write(bw_image.tobytes())
-                print(f"Saved raw binary data: {raw_path}")
 
                 frame_count += 1
+                pbar.update(1)
 
-            video.release()
-            print(f"Extracted {frame_count} frames from {video_filepath} and resized them for OLED.")
-        except Exception as e:
-            print(f"An error occurred while processing {video_filepath}: {e}")
+        video.release()
+        print(f"[32mExtracted {frame_count} frames from[0m [1m{os.path.basename(video_path)}[0m.")
+
+    except Exception as e:
+        print(f"[32mError processing video {os.path.basename(video_path)}:[0m {e}")

@@ -9,9 +9,9 @@ WIDTH = 128
 HEIGHT = 64
 
 # Initialize I2C and OLED display
-i2c = I2C(0, scl=Pin(9), sda=Pin(8), freq=200000)  # Adjust pins and frequency as needed
+i2c = I2C(0, scl=Pin(9), sda=Pin(8), freq=200000)
 oled = SH1106_I2C(WIDTH, HEIGHT, i2c)
-oled.rotate(True)  # Rotate display if needed
+oled.rotate(True)
 oled.fill(0)
 oled.text("PBM Viewer", 0, 0)
 oled.show()
