@@ -10,7 +10,7 @@ frame_folder = os.path.join(script_folder, "frames")        # Folder to store ex
 raw_data_folder = os.path.join(script_folder, "raw_data")   # Folder to store raw binary data
 
 # Step 2: Define the TikTok video URL
-video_url = "https://www.tiktok.com/@pokemonmasterzo/video/7448685062490541355?is_from_webapp=1&sender_device=pc&web_id=7453276693018314256"  # Define TikTok URL
+video_url = "https://www.tiktok.com/@chllxedits/video/7452726325628128520?is_from_webapp=1&sender_device=pc&web_id=7453276693018314256"  # Define TikTok URL
 
 # Step 3: Clean up all previous files before starting
 print("Cleaning up previous files...")
@@ -39,12 +39,10 @@ os.makedirs(raw_data_folder, exist_ok=True)
 
 # Step 5: Download the TikTok video
 try:
-    tiktok_video_path = os.path.join(script_folder, "tiktok_video.mp4")  # Save TikTok video here
-
     # Download the video
     specify_browser("chrome")  # Specify the browser for cookie extraction
     save_tiktok(video_url, save_video=True, metadata_fn='', browser_name=None)
-    print(f"Downloaded TikTok video successfully! Saved at {tiktok_video_path}")
+    print("Downloaded TikTok video successfully!")
 except Exception as e:
     print(f"An error occurred during TikTok video download: {e}")
 
@@ -60,11 +58,20 @@ else:
             # Open the video file
             video = cv2.VideoCapture(video_filepath)
 
+            # Get video properties
+            fps = video.get(cv2.CAP_PROP_FPS)
+            total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+            duration = total_frames / fps
+            start_time = max(0, duration - 9)  # Start 9 seconds from the end
+            start_frame = int(start_time * fps)
+
             # OLED resolution
             oled_width = 128
             oled_height = 64
 
             frame_count = 0
+            video.set(cv2.CAP_PROP_POS_FRAMES, start_frame)  # Set to start frame
+
             while True:
                 ret, frame = video.read()
                 if not ret:
